@@ -1,0 +1,33 @@
+/*
+  Responsive and minimal CSS for 3D flower demo
+*/
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: #e9e2dc;
+}
+
+#flower-canvas {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+@media (max-width: 640px) {
+  #flower-canvas {
+    width: 100vw;
+    height: 100vh;
+    top: 0;
+    left: 0;
+  }
+}

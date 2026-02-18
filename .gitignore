@@ -1,0 +1,25 @@
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+bin/build.js
+bin/live-reload.js
+
+# Logs
+*.log
+
+# Dependency directories
+pnpm-lock.yaml
+
+# IDE and system files
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Test outputs
+coverage/
+
+# Misc
+.env
