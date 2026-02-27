@@ -64,6 +64,11 @@ function lerp(start, end, t) {
 
 const isMobile = () => window.innerWidth <= 640;
 
+// How many pixels of scroll to complete the full flower bloom.
+// Increase to make the bloom slower (spread over more scroll), decrease to make it faster.
+// The 2D flower completed roughly within 2 viewport-heights of scroll.
+const HERO_SCROLL_RANGE = () => window.innerHeight * 2;
+
 // ── Init Function ─────────────────────────────────────────────────────────
 function init3D() {
   console.log('[3D] init3D start');
@@ -80,21 +85,12 @@ function init3D() {
     height: '100%',
     zIndex: '10',
     pointerEvents: 'none',
-    transition: 'opacity 0.4s ease',
+    opacity: '0',                  // hidden until flower is ready
+    transition: 'opacity 0.6s ease',
   });
   container.appendChild(canvas);
   console.log('[3D] canvas appended');
 
-  // Add this inside init3D(), after the canvas is appended:
-  const scrollSpacer = document.createElement('div');
-  Object.assign(scrollSpacer.style, {
-    position: 'relative',
-    width: '100%',
-    height: '400vh', // make the page this much taller — adjust to taste
-    pointerEvents: 'none',
-    zIndex: '-1',
-  });
-  document.body.appendChild(scrollSpacer);
 
   // ── Renderer (REPLACED) ───────────────────────────────────────────────────
   const renderer = new THREE.WebGLRenderer({ 
@@ -138,7 +134,7 @@ function init3D() {
   scene.add(ambientLight);
 
   const softnessBias = 1.8;
-  x = softnessBias;
+  const x = softnessBias;
 
   const mainLightPos = new THREE.Vector3(-15, 20, 15);
 
@@ -231,24 +227,8 @@ function init3D() {
   
 
   // ── Scroll ────────────────────────────────────────────────────────────────
-  // const SCROLL_RANGE_VH = 4;
+  // progress is set each frame inside animate() by reading window.lenis.scroll.
   let progress = 0;
-  let targetProgress = 0; // add this
-
-  // const onScroll = () => {
-  //   const maxScroll = window.innerHeight * SCROLL_RANGE_VH;
-  //   targetProgress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
-  //   canvas.style.opacity = window.scrollY > maxScroll ? '0' : '1';
-  // };
-
-  const onScroll = () => {
-  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-  targetProgress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
-  canvas.style.opacity = '1';
-  };
-
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
 
   // ── Resize ────────────────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
@@ -263,7 +243,12 @@ function init3D() {
   function animate() {
     requestAnimationFrame(animate);
 
-    progress = lerp(progress, targetProgress, 0.08); // Smoothly interpolate towards targetProgress
+    // Read Lenis's smooth scroll position directly every frame.
+    // Lenis already eases the scroll over 1.2s — adding a lerp on top
+    // creates double-smoothing which causes the "lagging behind" feel.
+    // So we track targetProgress exactly; no additional lerp needed.
+    const currentScroll = window.lenis ? window.lenis.scroll : window.scrollY;
+    progress = Math.min(1, Math.max(0, currentScroll / HERO_SCROLL_RANGE()));
     
 
     if (flower && action && mixer) {
@@ -312,13 +297,15 @@ function init3D() {
       mixer.update(0);
     }
 
-  // renderer.render(scene, camera);
+    // Only render once the flower is in the scene — saves GPU during GLB load.
+    if (flower) {
       if (composer) {
         composer.render();
       } else {
-        renderer.render(scene, camera); // Fallback in case composer isn't ready
+        renderer.render(scene, camera);
       }
     }
+  }
 
   animate();
 
@@ -371,6 +358,7 @@ function init3D() {
 
       flower = data.flower;
       scene.add(flower);
+      canvas.style.opacity = '1'; // fade in now that the flower is ready
       console.log('[3D] flower added to scene');
 
       if (data.animations?.length > 0) {
