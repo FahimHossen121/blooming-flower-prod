@@ -52,6 +52,7 @@
     "typescript": "^4.9.5"
   },
   "dependencies": {
+    "@finsweet/developer-starter": "link:",
     "@finsweet/ts-utils": "^0.38.0",
     "three": "^0.150.1"
   }

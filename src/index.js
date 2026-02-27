@@ -13,7 +13,7 @@ import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShade
 // ── Saturation Shader ─────────────────────────────────────────────────────
 const SaturationShader = {
   uniforms: {
-    tDiffuse:   { value: null },
+    tDiffuse: { value: null },
     saturation: { value: 1 }, // 0 = grayscale, 1 = normal, 1.2 = slightly boosted
   },
   vertexShader: `
@@ -85,27 +85,26 @@ function init3D() {
     height: '100%',
     zIndex: '10',
     pointerEvents: 'none',
-    opacity: '0',                  // hidden until flower is ready
+    opacity: '0', // hidden until flower is ready
     transition: 'opacity 0.6s ease',
   });
   container.appendChild(canvas);
   console.log('[3D] canvas appended');
 
-
   // ── Renderer (REPLACED) ───────────────────────────────────────────────────
-  const renderer = new THREE.WebGLRenderer({ 
-    canvas, 
-    antialias: true, 
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
     alpha: false,
-    powerPreference: "high-performance" 
-  }); 
+    powerPreference: 'high-performance',
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
 
   // This is the "Blender AgX" equivalent
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.AgXToneMapping; 
-  renderer.toneMappingExposure = 0.9; 
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 0.9;
 
   // Soft shadow settings
   renderer.shadowMap.enabled = true;
@@ -126,11 +125,11 @@ function init3D() {
   camera.rotateX(-0.3);
   // camera.lookAt(0.001,0.00,0.00);
   // Store the initial camera position
-  const initialCamPos = camera.position.clone();
+  // const initialCamPos = camera.position.clone(); // Unused variable removed
   console.log('[3D] camera position:', camera.position);
 
   // ── Lights─────────────────────────────────────────────────────
-  const ambientLight = new THREE.AmbientLight(0x2c7ce6, 0.3); 
+  const ambientLight = new THREE.AmbientLight(0x2c7ce6, 0.3);
   scene.add(ambientLight);
 
   const softnessBias = 1.8;
@@ -138,7 +137,7 @@ function init3D() {
 
   const mainLightPos = new THREE.Vector3(-15, 20, 15);
 
-  const mainLight = new THREE.DirectionalLight(0xf1f7b7, 3-x);
+  const mainLight = new THREE.DirectionalLight(0xf1f7b7, 3 - x);
   mainLight.position.set(mainLightPos.x, mainLightPos.y, mainLightPos.z);
   mainLight.castShadow = true;
 
@@ -147,12 +146,12 @@ function init3D() {
   mainLight2.castShadow = true;
 
   // High-quality shadow resolution
-  mainLight.shadow.mapSize.width = 1024; 
+  mainLight.shadow.mapSize.width = 1024;
   mainLight.shadow.mapSize.height = 1024;
 
-  mainLight2.shadow.mapSize.width = 2048; 
+  mainLight2.shadow.mapSize.width = 2048;
   mainLight2.shadow.mapSize.height = 2048;
-  
+
   const d = 5;
   mainLight.shadow.camera.left = -d;
   mainLight.shadow.camera.right = d;
@@ -161,7 +160,7 @@ function init3D() {
   mainLight.shadow.camera.near = 0.1;
   mainLight.shadow.camera.far = 40;
 
-  mainLight.shadow.bias = -0.001; 
+  mainLight.shadow.bias = -0.001;
 
   mainLight2.shadow.camera.left = -d;
   mainLight2.shadow.camera.right = d;
@@ -170,12 +169,12 @@ function init3D() {
   mainLight2.shadow.camera.near = 0.1;
   mainLight2.shadow.camera.far = 40;
 
-  mainLight2.shadow.bias = -0.001; 
+  mainLight2.shadow.bias = -0.001;
 
   mainLight.shadow.radius = 18;
   mainLight2.shadow.radius = 2;
 
-  mainLight.shadow.normalBias = 0.04; 
+  mainLight.shadow.normalBias = 0.04;
   mainLight2.shadow.normalBias = 0.01;
 
   scene.add(mainLight);
@@ -195,24 +194,25 @@ function init3D() {
 
   // 2. Depth of Field Pass (The "Focus")
   const bokehPass = new BokehPass(scene, camera, {
-    focus: 0.1,      // Distance to focus on
+    focus: 0.1, // Distance to focus on
     aperture: 0.0, // Blur strength (keep this very low for "performant" look)
-    maxblur: 0.01,   // Maximum blur amount
+    maxblur: 0.01, // Maximum blur amount
     width: window.innerWidth,
-    height: window.innerHeight
+    height: window.innerHeight,
   });
 
   // 3. Gamma Correction (Essential for AgX to look right)
   composer.addPass(new ShaderPass(GammaCorrectionShader));
 
-
   const saturationPass = new ShaderPass(SaturationShader);
   composer.addPass(saturationPass);
 
-
   // 4. FXAA (This fixes the jagged stamen)
   const fxaaPass = new ShaderPass(FXAAShader);
-  fxaaPass.uniforms['resolution'].value.set(1 / (window.innerWidth * renderer.getPixelRatio()), 1 / (window.innerHeight * renderer.getPixelRatio()));
+  fxaaPass.uniforms['resolution'].value.set(
+    1 / (window.innerWidth * renderer.getPixelRatio()),
+    1 / (window.innerHeight * renderer.getPixelRatio())
+  );
   composer.addPass(fxaaPass);
 
   // Optimization: Disable DoF on mobile if it lags
@@ -224,7 +224,6 @@ function init3D() {
   let mixer = null;
   let action = null;
   let flower = null;
-  
 
   // ── Scroll ────────────────────────────────────────────────────────────────
   // progress is set each frame inside animate() by reading window.lenis.scroll.
@@ -249,27 +248,25 @@ function init3D() {
     // So we track targetProgress exactly; no additional lerp needed.
     const currentScroll = window.lenis ? window.lenis.scroll : window.scrollY;
     progress = Math.min(1, Math.max(0, currentScroll / HERO_SCROLL_RANGE()));
-    
 
     if (flower && action && mixer) {
       const clamped = Math.min(1, Math.max(0, progress));
       const eased = 1 - (1 - clamped) * (1 - clamped);
 
       // Split progress into two phases
-      const phase1 = Math.min(1.0, progress * 1.5);        // 0→1 during first half
+      const phase1 = Math.min(1.0, progress * 1.5); // 0→1 during first half
       const phase2 = Math.min(1.0, Math.max(0.0, (progress - 0.5) * 2.5)); // 0→1 during second half
       const eased1 = 1 - (1 - phase1) * (1 - phase1);
       // const eased2 = phase2 * phase2 * (1 - phase2); // Strong ease for second phase
-      const eased2 = phase2 < 0.5
-      ? 4 * phase2 * phase2 * phase2
-      : 1 - Math.pow(-2 * phase2 + 2, 3) / 2;
+      const eased2 =
+        phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 3) / 2;
 
       const mobile = isMobile();
       // const scale = mobile ? lerp(1.7, 2.25, eased2) : lerp(2.1, 5, eased2);
-      const posY  = mobile ? lerp(0.5, 0.2, eased1)  : lerp(0.7, 0.35, eased1);
-      const posX  = mobile ? lerp(0.08, -0.08, eased1) : lerp(0, -0.2, eased1);
-      const rotX  = lerp(0, 0.1, Math.min(1.0, eased1*2));
-      const rotY  = lerp(0, -0.2 , eased2);
+      // const posY  = mobile ? lerp(0.5, 0.2, eased1)  : lerp(0.7, 0.35, eased1); // Unused variable removed
+      // const posX  = mobile ? lerp(0.08, -0.08, eased1) : lerp(0, -0.2, eased1); // Unused variable removed
+      const rotX = lerp(0, 0.1, Math.min(1.0, eased1 * 2));
+      const rotY = lerp(0, -0.2, eased2);
 
       const camZ = mobile ? lerp(12, 6, eased2) : lerp(11, 4, eased2);
       camera.position.setZ(camZ);
@@ -277,9 +274,6 @@ function init3D() {
       camera.position.setY(camY);
       const camX = mobile ? lerp(0, 0, eased2) : lerp(0.1, 0.2, eased2);
       camera.position.setX(camX);
-      
-      
-   
 
       // flower.position.set(posX, posY, 0);
       flower.rotation.set(rotX, rotY, -0.3);
@@ -288,9 +282,9 @@ function init3D() {
       // Inside animate(), alongside the other lerped values:
       const saturation = lerp(0.6, 1.0, eased * 2); // reaches 1.0 at progress = 0.5
       saturationPass.uniforms['saturation'].value = Math.min(1.0, saturation);
-      const aperture = lerp(0.00, 0.005, eased2);
+      const aperture = lerp(0.0, 0.005, eased2);
       bokehPass.uniforms['aperture'].value = aperture;
-      bokehPass.uniforms['focus'].value = (lerp(11.2, 3.8, eased2)); // Pull focus closer as we bloom
+      bokehPass.uniforms['focus'].value = lerp(11.2, 3.8, eased2); // Pull focus closer as we bloom
 
       const duration = action.getClip().duration;
       action.time = duration * Math.min(0.9999, phase1);
@@ -324,32 +318,38 @@ function init3D() {
         if (!child.isMesh) return;
 
         child.castShadow = true;
-        child.receiveShadow = true; 
+        child.receiveShadow = true;
 
         if (child.material) {
-        child.material.dithering = true; // Helps with color banding
+          child.material.dithering = true; // Helps with color banding
         }
         // Improves texture sharpness at angles
         if (child.material.map) child.material.map.anisotropy = 16;
 
         const mat = child.material;
         console.log(
-          '[3D]   mesh:', child.name,
-          '| mat:', mat.type,
-          '| map:', mat.map ? '✓' : 'undefined',
-          '| normalMap:', mat.normalMap ? '✓' : 'undefined',
-          '| transparent:', mat.transparent,
-          '| transmission:', mat.transmission
+          '[3D]   mesh:',
+          child.name,
+          '| mat:',
+          mat.type,
+          '| map:',
+          mat.map ? '✓' : 'undefined',
+          '| normalMap:',
+          mat.normalMap ? '✓' : 'undefined',
+          '| transparent:',
+          mat.transparent,
+          '| transmission:',
+          mat.transmission
         );
 
         // Fix alpha cutout for petal/flower materials
         // The GLB materials are kept as-is; we only patch transparency rendering
         const matName = mat.name?.toLowerCase() ?? '';
         if (matName.includes('petal') || matName.includes('flower')) {
-          mat.alphaTest   = 0.5;
+          mat.alphaTest = 0.5;
           mat.transparent = false;
-          mat.depthWrite  = true;
-          mat.side        = THREE.DoubleSide;
+          mat.depthWrite = true;
+          mat.side = THREE.DoubleSide;
 
           mat.needsUpdate = true;
           console.log('[3D] alpha clip applied to:', child.name);
@@ -375,7 +375,6 @@ function init3D() {
     })
     .catch((err) => console.error('[3D] load() failed:', err));
 }
-
 
 async function load() {
   const glbUrl = ASSET_BASE_URL + GLB_FILE;
