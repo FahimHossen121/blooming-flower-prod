@@ -54,6 +54,7 @@
   "dependencies": {
     "@finsweet/developer-starter": "link:",
     "@finsweet/ts-utils": "^0.38.0",
+    "@studio-freight/lenis": "^1.0.42",
     "three": "^0.150.1"
   }
 }

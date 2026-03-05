@@ -10,6 +10,36 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
 
+// ── Smooth scrolling (Lenis) ──────────────────────────────────────────────
+import Lenis from '@studio-freight/lenis';
+
+let lenis = null;
+
+// define easing function here for reuse
+// const lenisEasing = t =>
+//   t < 0.5
+//     ? 2 * t * t
+//     : 1 - Math.pow(-2 * t + 2, 2) / 2; // classic ease-in-out
+
+
+// Wait for Webflow to initialize, then access/modify Lenis
+setTimeout(() => {
+  console.log('[LENIS] Checking after Webflow initialization...');
+  
+  // Check if Webflow created Lenis
+  if (window.lenis && window.lenis.options) {
+    console.log('[LENIS] Found Webflow Lenis, updating options');
+    lenis = window.lenis;
+    
+    // Update the options on Webflow's instance
+    lenis.options.duration = 2;
+    lenis.options.wheelMultiplier = 1;
+    lenis.options.smoothWheel = true;
+    
+    console.log('[LENIS] Updated. New duration:', lenis.options.duration);
+  }
+}, 100);
+
 // ── Saturation Shader ─────────────────────────────────────────────────────
 const SaturationShader = {
   uniforms: {
@@ -39,7 +69,7 @@ const SaturationShader = {
 
 // ── Asset Base URL ────────────────────────────────────────────────────────
 const ASSET_BASE_URL = 'https://cdn.prod.website-files.com/699633088760d3ad60ae151a/';
-const GLB_FILE = '699f31a05813f4691398f3b7_Flower15.optimized.glb.txt';
+const GLB_FILE = '69a5de05093f9a76b01ada0a_Flower18.optimized.glb.txt';
 
 // // Import minimal CSS for responsiveness
 // const style = document.createElement('link');
@@ -68,6 +98,15 @@ const isMobile = () => window.innerWidth <= 640;
 // Increase to make the bloom slower (spread over more scroll), decrease to make it faster.
 // The 2D flower completed roughly within 2 viewport-heights of scroll.
 const HERO_SCROLL_RANGE = () => window.innerHeight * 2;
+
+// phase parameters control how much scroll progress is required to
+// complete each half of the bloom animation.  Think of them as
+// "phase durations" – smaller values finish more quickly.
+// adjust separately for mobile/desktop as needed.
+const PHASE_PARAMS = {
+  mobile:  { phase1: 0.6, phase2: 0.4 }, // less scroll = faster
+  desktop: { phase1: 1.0, phase2: 0.5 },
+};
 
 // ── Init Function ─────────────────────────────────────────────────────────
 function init3D() {
@@ -116,12 +155,12 @@ function init3D() {
 
   // ── Camera ────────────────────────────────────────────────────────────────
   const camera = new THREE.PerspectiveCamera(
-    isMobile() ? 28 : 21,
+    isMobile() ? 25 : 20,
     window.innerWidth / window.innerHeight,
     0.1,
     1000
   );
-  camera.position.set(0, 3, 0);
+  // camera.position.set(0, 3, 0); //position will be animated in the render loop, so we start at a neutral point
   camera.rotateX(-0.3);
   // camera.lookAt(0.001,0.00,0.00);
   // Store the initial camera position
@@ -149,8 +188,8 @@ function init3D() {
   mainLight.shadow.mapSize.width = 1024;
   mainLight.shadow.mapSize.height = 1024;
 
-  mainLight2.shadow.mapSize.width = 2048;
-  mainLight2.shadow.mapSize.height = 2048;
+  mainLight2.shadow.mapSize.width = isMobile() ? 1024 : 2048;
+  mainLight2.shadow.mapSize.height = isMobile() ? 1024 : 2048;
 
   const d = 5;
   mainLight.shadow.camera.left = -d;
@@ -196,7 +235,7 @@ function init3D() {
   const bokehPass = new BokehPass(scene, camera, {
     focus: 0.1, // Distance to focus on
     aperture: 0.0, // Blur strength (keep this very low for "performant" look)
-    maxblur: 0.01, // Maximum blur amount
+    maxblur: isMobile() ? 0.012 : 0.01, // Maximum blur amount
     width: window.innerWidth,
     height: window.innerHeight,
   });
@@ -216,9 +255,9 @@ function init3D() {
   composer.addPass(fxaaPass);
 
   // Optimization: Disable DoF on mobile if it lags
-  if (!isMobile()) {
+  // if (!isMobile()) {
     composer.addPass(bokehPass);
-  }
+  // }
 
   // ── Model state ───────────────────────────────────────────────────────────
   let mixer = null;
@@ -250,29 +289,28 @@ function init3D() {
     progress = Math.min(1, Math.max(0, currentScroll / HERO_SCROLL_RANGE()));
 
     if (flower && action && mixer) {
+      const mobile = isMobile();
       const clamped = Math.min(1, Math.max(0, progress));
       const eased = 1 - (1 - clamped) * (1 - clamped);
 
-      // Split progress into two phases
-      const phase1 = Math.min(1.0, progress * 1.5); // 0→1 during first half
-      const phase2 = Math.min(1.0, Math.max(0.0, (progress - 0.5) * 2.5)); // 0→1 during second half
+      // Split progress into two phases using the appropriate ratios
+      const params = mobile ? PHASE_PARAMS.mobile : PHASE_PARAMS.desktop;
+      // divide by duration so that lower numbers complete sooner
+      const phase1 = Math.min(1.0, progress / params.phase1);
+      const phase2 = Math.min(1.0, Math.max(0.0, (progress - 0.5) / params.phase2));
       const eased1 = 1 - (1 - phase1) * (1 - phase1);
-      // const eased2 = phase2 * phase2 * (1 - phase2); // Strong ease for second phase
       const eased2 =
-        phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 3) / 2;
+        phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 2) / 2;
 
-      const mobile = isMobile();
-      // const scale = mobile ? lerp(1.7, 2.25, eased2) : lerp(2.1, 5, eased2);
-      // const posY  = mobile ? lerp(0.5, 0.2, eased1)  : lerp(0.7, 0.35, eased1); // Unused variable removed
-      // const posX  = mobile ? lerp(0.08, -0.08, eased1) : lerp(0, -0.2, eased1); // Unused variable removed
+      // any mobile-specific adjustments to transform values can go here
       const rotX = lerp(0, 0.1, Math.min(1.0, eased1 * 2));
       const rotY = lerp(0, -0.2, eased2);
 
-      const camZ = mobile ? lerp(12, 6, eased2) : lerp(11, 4, eased2);
+      const camZ = mobile ? lerp(11, 3.8, eased2) : lerp(11, 4, eased2);
       camera.position.setZ(camZ);
-      const camY = mobile ? lerp(4, 4, eased2) : lerp(3.8, 1.6, eased2);
+      const camY = mobile ? lerp(3.8, 1.5, eased2) : lerp(3.8, 1.6, eased2);
       camera.position.setY(camY);
-      const camX = mobile ? lerp(0, 0, eased2) : lerp(0.1, 0.2, eased2);
+      const camX = mobile ? lerp(0.2, 0.2, eased2) : lerp(0.1, 0.2, eased2);
       camera.position.setX(camX);
 
       // flower.position.set(posX, posY, 0);
@@ -282,7 +320,7 @@ function init3D() {
       // Inside animate(), alongside the other lerped values:
       const saturation = lerp(0.6, 1.0, eased * 2); // reaches 1.0 at progress = 0.5
       saturationPass.uniforms['saturation'].value = Math.min(1.0, saturation);
-      const aperture = lerp(0.0, 0.005, eased2);
+      const aperture = lerp(0.0, isMobile() ? 0.02 : 0.005, eased2);
       bokehPass.uniforms['aperture'].value = aperture;
       bokehPass.uniforms['focus'].value = lerp(11.2, 3.8, eased2); // Pull focus closer as we bloom
 

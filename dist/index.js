@@ -1,8 +1,6 @@
+new EventSource("http://localhost:3000/esbuild").addEventListener("change", () => location.reload());
 "use strict";
 (() => {
-  // bin/live-reload.js
-  new EventSource(`${"http://localhost:3000"}/esbuild`).addEventListener("change", () => location.reload());
-
   // node_modules/.pnpm/three@0.150.1/node_modules/three/build/three.module.js
   var REVISION = "150";
   var CullFaceNone = 0;
@@ -24761,6 +24759,18 @@
   };
 
   // src/index.js
+  var lenis = null;
+  setTimeout(() => {
+    console.log("[LENIS] Checking after Webflow initialization...");
+    if (window.lenis && window.lenis.options) {
+      console.log("[LENIS] Found Webflow Lenis, updating options");
+      lenis = window.lenis;
+      lenis.options.duration = 2;
+      lenis.options.wheelMultiplier = 1;
+      lenis.options.smoothWheel = true;
+      console.log("[LENIS] Updated. New duration:", lenis.options.duration);
+    }
+  }, 100);
   var SaturationShader = {
     uniforms: {
       tDiffuse: { value: null },
@@ -24788,11 +24798,11 @@
   `
   };
   var ASSET_BASE_URL = "https://cdn.prod.website-files.com/699633088760d3ad60ae151a/";
-  var GLB_FILE = "699f31a05813f4691398f3b7_Flower15.optimized.glb.txt";
+  var GLB_FILE = "69a5de05093f9a76b01ada0a_Flower18.optimized.glb.txt";
   var modelLoader = new GLTFLoader();
   modelLoader.setMeshoptDecoder(MeshoptDecoder);
   console.log("[3D] GLTFLoader created with MeshoptDecoder");
-  window.Webflow ||= [];
+  window.Webflow || (window.Webflow = []);
   window.Webflow.push(() => {
     console.log("[3D] Webflow push fired");
     init3D();
@@ -24802,6 +24812,11 @@
   }
   var isMobile = () => window.innerWidth <= 640;
   var HERO_SCROLL_RANGE = () => window.innerHeight * 2;
+  var PHASE_PARAMS = {
+    mobile: { phase1: 0.6, phase2: 0.4 },
+    // less scroll = faster
+    desktop: { phase1: 1, phase2: 0.5 }
+  };
   function init3D() {
     console.log("[3D] init3D start");
     const container = document.querySelector('[data-3d="c"]') || document.body;
@@ -24838,12 +24853,11 @@
     const scene = new Scene();
     scene.background = new Color("#aca69e");
     const camera = new PerspectiveCamera(
-      isMobile() ? 28 : 21,
+      isMobile() ? 25 : 20,
       window.innerWidth / window.innerHeight,
       0.1,
       1e3
     );
-    camera.position.set(0, 3, 0);
     camera.rotateX(-0.3);
     console.log("[3D] camera position:", camera.position);
     const ambientLight = new AmbientLight(2915558, 0.3);
@@ -24859,8 +24873,8 @@
     mainLight2.castShadow = true;
     mainLight.shadow.mapSize.width = 1024;
     mainLight.shadow.mapSize.height = 1024;
-    mainLight2.shadow.mapSize.width = 2048;
-    mainLight2.shadow.mapSize.height = 2048;
+    mainLight2.shadow.mapSize.width = isMobile() ? 1024 : 2048;
+    mainLight2.shadow.mapSize.height = isMobile() ? 1024 : 2048;
     const d = 5;
     mainLight.shadow.camera.left = -d;
     mainLight.shadow.camera.right = d;
@@ -24893,7 +24907,7 @@
       // Distance to focus on
       aperture: 0,
       // Blur strength (keep this very low for "performant" look)
-      maxblur: 0.01,
+      maxblur: isMobile() ? 0.012 : 0.01,
       // Maximum blur amount
       width: window.innerWidth,
       height: window.innerHeight
@@ -24907,9 +24921,7 @@
       1 / (window.innerHeight * renderer.getPixelRatio())
     );
     composer.addPass(fxaaPass);
-    if (!isMobile()) {
-      composer.addPass(bokehPass);
-    }
+    composer.addPass(bokehPass);
     let mixer = null;
     let action = null;
     let flower = null;
@@ -24926,26 +24938,27 @@
       const currentScroll = window.lenis ? window.lenis.scroll : window.scrollY;
       progress = Math.min(1, Math.max(0, currentScroll / HERO_SCROLL_RANGE()));
       if (flower && action && mixer) {
+        const mobile = isMobile();
         const clamped = Math.min(1, Math.max(0, progress));
         const eased = 1 - (1 - clamped) * (1 - clamped);
-        const phase1 = Math.min(1, progress * 1.5);
-        const phase2 = Math.min(1, Math.max(0, (progress - 0.5) * 2.5));
+        const params = mobile ? PHASE_PARAMS.mobile : PHASE_PARAMS.desktop;
+        const phase1 = Math.min(1, progress / params.phase1);
+        const phase2 = Math.min(1, Math.max(0, (progress - 0.5) / params.phase2));
         const eased1 = 1 - (1 - phase1) * (1 - phase1);
-        const eased2 = phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 3) / 2;
-        const mobile = isMobile();
+        const eased2 = phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 2) / 2;
         const rotX = lerp2(0, 0.1, Math.min(1, eased1 * 2));
         const rotY = lerp2(0, -0.2, eased2);
-        const camZ = mobile ? lerp2(12, 6, eased2) : lerp2(11, 4, eased2);
+        const camZ = mobile ? lerp2(11, 3.8, eased2) : lerp2(11, 4, eased2);
         camera.position.setZ(camZ);
-        const camY = mobile ? lerp2(4, 4, eased2) : lerp2(3.8, 1.6, eased2);
+        const camY = mobile ? lerp2(3.8, 1.5, eased2) : lerp2(3.8, 1.6, eased2);
         camera.position.setY(camY);
-        const camX = mobile ? lerp2(0, 0, eased2) : lerp2(0.1, 0.2, eased2);
+        const camX = mobile ? lerp2(0.2, 0.2, eased2) : lerp2(0.1, 0.2, eased2);
         camera.position.setX(camX);
         flower.rotation.set(rotX, rotY, -0.3);
         flower.scale.setScalar(2.1);
         const saturation = lerp2(0.6, 1, eased * 2);
         saturationPass.uniforms["saturation"].value = Math.min(1, saturation);
-        const aperture = lerp2(0, 5e-3, eased2);
+        const aperture = lerp2(0, isMobile() ? 0.02 : 5e-3, eased2);
         bokehPass.uniforms["aperture"].value = aperture;
         bokehPass.uniforms["focus"].value = lerp2(11.2, 3.8, eased2);
         const duration = action.getClip().duration;
@@ -25036,13 +25049,4 @@
     return { flower: gltf.scene, animations: gltf.animations };
   }
 })();
-/*! Bundled license information:
-
-three/build/three.module.js:
-  (**
-   * @license
-   * Copyright 2010-2023 Three.js Authors
-   * SPDX-License-Identifier: MIT
-   *)
-*/
 //# sourceMappingURL=index.js.map
