@@ -24862,10 +24862,10 @@ new EventSource("http://localhost:3000/esbuild").addEventListener("change", () =
     console.log("[3D] camera position:", camera.position);
     const ambientLight = new AmbientLight(2915558, 0.3);
     scene.add(ambientLight);
-    const softnessBias = 1.8;
+    const softnessBias = 0.9;
     const x = softnessBias;
     const mainLightPos = new Vector3(-15, 20, 15);
-    const mainLight = new DirectionalLight(15857591, 3 - x);
+    const mainLight = new DirectionalLight(15857591, 1.5 - x);
     mainLight.position.set(mainLightPos.x, mainLightPos.y, mainLightPos.z);
     mainLight.castShadow = true;
     const mainLight2 = new DirectionalLight(15857591, x);

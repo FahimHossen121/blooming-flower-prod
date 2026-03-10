@@ -171,12 +171,12 @@ function init3D() {
   const ambientLight = new THREE.AmbientLight(0x2c7ce6, 0.3);
   scene.add(ambientLight);
 
-  const softnessBias = 1.8;
+  const softnessBias = 0.9;
   const x = softnessBias;
 
   const mainLightPos = new THREE.Vector3(-15, 20, 15);
 
-  const mainLight = new THREE.DirectionalLight(0xf1f7b7, 3 - x);
+  const mainLight = new THREE.DirectionalLight(0xf1f7b7, 1.5 - x);
   mainLight.position.set(mainLightPos.x, mainLightPos.y, mainLightPos.z);
   mainLight.castShadow = true;
 
