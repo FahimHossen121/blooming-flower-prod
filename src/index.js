@@ -1,153 +1,176 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
-
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShader.js';
 
-// ── Smooth scrolling (Lenis) ──────────────────────────────────────────────
-import Lenis from '@studio-freight/lenis';
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
 
-let lenis = null;
+const ASSET_BASE = 'https://cdn.prod.website-files.com/699633088760d3ad60ae151a/';
+const GLB_FILE   = '69a5de05093f9a76b01ada0a_Flower18.optimized.glb.txt';
 
-// define easing function here for reuse
-// const lenisEasing = t =>
-//   t < 0.5
-//     ? 2 * t * t
-//     : 1 - Math.pow(-2 * t + 2, 2) / 2; // classic ease-in-out
+const SCROLL_RANGE  = () => window.innerHeight * 2;
+const IS_MOBILE     = () => window.innerWidth <= 640;
 
+const PHASE = {
+  mobile:  { p1: 0.6, p2: 0.4 },
+  desktop: { p1: 1.0, p2: 0.5 },
+};
 
-// Wait for Webflow to initialize, then access/modify Lenis
-setTimeout(() => {
-  console.log('[LENIS] Checking after Webflow initialization...');
-  
-  // Check if Webflow created Lenis
-  if (window.lenis && window.lenis.options) {
-    console.log('[LENIS] Found Webflow Lenis, updating options');
-    lenis = window.lenis;
-    
-    // Update the options on Webflow's instance
-    lenis.options.duration = 2;
-    lenis.options.wheelMultiplier = 1;
-    lenis.options.smoothWheel = true;
-    
-    console.log('[LENIS] Updated. New duration:', lenis.options.duration);
-  }
-}, 100);
+// ─────────────────────────────────────────────────────────────────────────────
+// Saturation post-process shader
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ── Saturation Shader ─────────────────────────────────────────────────────
 const SaturationShader = {
   uniforms: {
-    tDiffuse: { value: null },
-    saturation: { value: 1 }, // 0 = grayscale, 1 = normal, 1.2 = slightly boosted
+    tDiffuse:   { value: null },
+    saturation: { value: 1.0 },
   },
-  vertexShader: `
+  vertexShader: /* glsl */`
     varying vec2 vUv;
     void main() {
       vUv = uv;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
-  fragmentShader: `
+  fragmentShader: /* glsl */`
     uniform sampler2D tDiffuse;
     uniform float saturation;
     varying vec2 vUv;
-
     void main() {
       vec4 color = texture2D(tDiffuse, vUv);
       float grey = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
-      color.rgb = mix(vec3(grey), color.rgb, saturation);
+      color.rgb  = mix(vec3(grey), color.rgb, saturation);
       gl_FragColor = color;
     }
   `,
 };
 
-// ── Asset Base URL ────────────────────────────────────────────────────────
-const ASSET_BASE_URL = 'https://cdn.prod.website-files.com/699633088760d3ad60ae151a/';
-const GLB_FILE = '69a5de05093f9a76b01ada0a_Flower18.optimized.glb.txt';
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-// // Import minimal CSS for responsiveness
-// const style = document.createElement('link');
-// style.rel = 'stylesheet';
-// style.href = './src/flower.css';
-// document.head.appendChild(style);
+const lerp = (a, b, t) => a + (b - a) * t;
 
-// ── Loaders ───────────────────────────────────────────────────────────────
-const modelLoader = new GLTFLoader();
-modelLoader.setMeshoptDecoder(MeshoptDecoder);
-console.log('[3D] GLTFLoader created with MeshoptDecoder');
+const easeOut2  = t => 1 - (1 - t) * (1 - t);
+const easeCubic = t =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
-window.Webflow ||= [];
-window.Webflow.push(() => {
-  console.log('[3D] Webflow push fired');
-  init3D();
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// Loader
+// ─────────────────────────────────────────────────────────────────────────────
 
-function lerp(start, end, t) {
-  return start + (end - start) * t;
-}
 
-const isMobile = () => window.innerWidth <= 640;
+// ─────────────────────────────────────────────────────────────────────────────
+// Wind
+// ─────────────────────────────────────────────────────────────────────────────
 
-// How many pixels of scroll to complete the full flower bloom.
-// Increase to make the bloom slower (spread over more scroll), decrease to make it faster.
-// The 2D flower completed roughly within 2 viewport-heights of scroll.
-const HERO_SCROLL_RANGE = () => window.innerHeight * 2;
-
-// phase parameters control how much scroll progress is required to
-// complete each half of the bloom animation.  Think of them as
-// "phase durations" – smaller values finish more quickly.
-// adjust separately for mobile/desktop as needed.
-const PHASE_PARAMS = {
-  mobile:  { phase1: 0.6, phase2: 0.4 }, // less scroll = faster
-  desktop: { phase1: 1.0, phase2: 0.5 },
+// Shared time uniform — updated every frame, injected into every material
+const windUniforms = {
+  uTime:         { value: 0 },
+  uWindStrength: { value: 0.04 },
+  uWindSpeed:    { value: 0.7 },
 };
 
-// ── Init Function ─────────────────────────────────────────────────────────
-function init3D() {
-  console.log('[3D] init3D start');
-  const container = document.querySelector('[data-3d="c"]') || document.body;
-  console.log('[3D] container:', container.tagName, container.id || '(no id)');
+function applyWind(mat) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime          = windUniforms.uTime;
+    shader.uniforms.uWindStrength  = windUniforms.uWindStrength;
+    shader.uniforms.uWindSpeed     = windUniforms.uWindSpeed;
 
+    shader.vertexShader =
+      `uniform float uTime;
+      uniform float uWindStrength;
+      uniform float uWindSpeed;
+
+      float hash(vec2 p) {
+        p = fract(p * vec2(127.1, 311.7));
+        p += dot(p, p + 19.19);
+        return fract(p.x * p.y);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(hash(i + vec2(0.0,0.0)), hash(i + vec2(1.0,0.0)), u.x),
+          mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x),
+          u.y
+        );
+      }
+      ` + shader.vertexShader;
+
+    shader.vertexShader = shader.vertexShader.replace(
+      `#include <project_vertex>`,
+      `#include <project_vertex>
+
+      float dist = length(transformed.xz);
+      float t = uTime * uWindSpeed;
+      float n  = noise(vec2(transformed.x * 1.8 + t, transformed.z * 1.8 + t * 0.7));
+           n += noise(vec2(transformed.x * 3.5 - t * 0.5, transformed.z * 3.5 + t * 1.1)) * 0.4;
+      n /= 1.4;
+      float displacement = (n - 0.5) * 2.0 * dist * uWindStrength;
+      gl_Position = projectionMatrix * (mvPosition + vec4(0.0, displacement, 0.0, 0.0));
+      `
+    );
+  };
+  mat.needsUpdate = true;
+}
+
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+async function loadGLB() {
+  const url = ASSET_BASE + GLB_FILE;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`GLB fetch failed: ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return new Promise((resolve, reject) => loader.parse(buf, '', resolve, reject));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────────────────────────────────────
+
+function init() {
+  const container = document.querySelector('[data-3d="c"]') || document.body;
+
+  // ── Canvas ──────────────────────────────────────────────────────────────
   const canvas = document.createElement('canvas');
   canvas.id = 'flower-canvas';
   Object.assign(canvas.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '100%',
-    height: '100%',
-    zIndex: '10',
+    position:      'fixed',
+    top:           '0',
+    left:          '0',
+    width:         '100%',
+    height:        '100%',
+    zIndex:        '10',
     pointerEvents: 'none',
-    opacity: '0', // hidden until flower is ready
-    transition: 'opacity 0.6s ease',
+    opacity:       '0',
+    transition:    'opacity 0.6s ease',
   });
   container.appendChild(canvas);
-  console.log('[3D] canvas appended');
 
-  // ── Renderer (REPLACED) ───────────────────────────────────────────────────
+  // ── Renderer ─────────────────────────────────────────────────────────────
   const renderer = new THREE.WebGLRenderer({
     canvas,
-    antialias: true,
-    alpha: false,
+    antialias:       true,
+    alpha:           false,
     powerPreference: 'high-performance',
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
-
-  // This is the "Blender AgX" equivalent
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.AgXToneMapping;
-  renderer.toneMappingExposure = 0.9;
-
-  // Soft shadow settings
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.VSMShadowMap;
+  renderer.outputColorSpace    = THREE.LinearSRGBColorSpace;
+  renderer.toneMapping         = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.4;
+  renderer.shadowMap.enabled   = true;
+  renderer.shadowMap.type      = THREE.VSMShadowMap;
 
   // ── Scene ─────────────────────────────────────────────────────────────────
   const scene = new THREE.Scene();
@@ -155,281 +178,192 @@ function init3D() {
 
   // ── Camera ────────────────────────────────────────────────────────────────
   const camera = new THREE.PerspectiveCamera(
-    isMobile() ? 25 : 20,
+    IS_MOBILE() ? 25 : 20,
     window.innerWidth / window.innerHeight,
     0.1,
-    1000
+    1000,
   );
-  // camera.position.set(0, 3, 0); //position will be animated in the render loop, so we start at a neutral point
   camera.rotateX(-0.3);
-  // camera.lookAt(0.001,0.00,0.00);
-  // Store the initial camera position
-  // const initialCamPos = camera.position.clone(); // Unused variable removed
-  console.log('[3D] camera position:', camera.position);
 
-  // ── Lights─────────────────────────────────────────────────────
-  const ambientLight = new THREE.AmbientLight(0x2c7ce6, 0.3);
-  scene.add(ambientLight);
+  // ── Lights ────────────────────────────────────────────────────────────────
+
+  // Ambient
+  scene.add(new THREE.AmbientLight(0x2c7ce6, 0.3));
+
+  // Two directional lights sharing the same position
+  const LIGHT_POS = new THREE.Vector3(25, 15, 20);
+  const SHADOW_D  = 5;
+
+  function makeDirLight(color, intensity, mapSize, shadowRadius, normalBias) {
+    const light = new THREE.DirectionalLight(color, intensity);
+    light.position.copy(LIGHT_POS);
+    light.castShadow = true;
+
+    light.shadow.mapSize.set(mapSize, mapSize);
+    light.shadow.camera.left   = -SHADOW_D;
+    light.shadow.camera.right  =  SHADOW_D;
+    light.shadow.camera.top    =  SHADOW_D;
+    light.shadow.camera.bottom = -SHADOW_D;
+    light.shadow.camera.near   = 0.1;
+    light.shadow.camera.far    = 40;
+    light.shadow.bias           = -0.001;
+    light.shadow.radius         = shadowRadius;
+    light.shadow.normalBias     = normalBias;
+    return light;
+  }
 
   const softnessBias = 0.9;
-  const x = softnessBias;
+  scene.add(makeDirLight(0xF7E1B7, 1.5 - softnessBias, 1024,                        18,  0.04));
+  scene.add(makeDirLight(0xF7E1B7, softnessBias,        IS_MOBILE() ? 1024 : 2048,   2,  0.01));
 
-  const mainLightPos = new THREE.Vector3(-15, 20, 15);
+  // Fill
+  const fill = new THREE.DirectionalLight(0xddeeff, 0.1);
+  fill.position.set(0, 5, -4);
+  scene.add(fill);
 
-  const mainLight = new THREE.DirectionalLight(0xf1f7b7, 1.5 - x);
-  mainLight.position.set(mainLightPos.x, mainLightPos.y, mainLightPos.z);
-  mainLight.castShadow = true;
-
-  const mainLight2 = new THREE.DirectionalLight(0xf1f7b7, x);
-  mainLight2.position.set(mainLightPos.x, mainLightPos.y, mainLightPos.z);
-  mainLight2.castShadow = true;
-
-  // High-quality shadow resolution
-  mainLight.shadow.mapSize.width = 1024;
-  mainLight.shadow.mapSize.height = 1024;
-
-  mainLight2.shadow.mapSize.width = isMobile() ? 1024 : 2048;
-  mainLight2.shadow.mapSize.height = isMobile() ? 1024 : 2048;
-
-  const d = 5;
-  mainLight.shadow.camera.left = -d;
-  mainLight.shadow.camera.right = d;
-  mainLight.shadow.camera.top = d;
-  mainLight.shadow.camera.bottom = -d;
-  mainLight.shadow.camera.near = 0.1;
-  mainLight.shadow.camera.far = 40;
-
-  mainLight.shadow.bias = -0.001;
-
-  mainLight2.shadow.camera.left = -d;
-  mainLight2.shadow.camera.right = d;
-  mainLight2.shadow.camera.top = d;
-  mainLight2.shadow.camera.bottom = -d;
-  mainLight2.shadow.camera.near = 0.1;
-  mainLight2.shadow.camera.far = 40;
-
-  mainLight2.shadow.bias = -0.001;
-
-  mainLight.shadow.radius = 18;
-  mainLight2.shadow.radius = 2;
-
-  mainLight.shadow.normalBias = 0.04;
-  mainLight2.shadow.normalBias = 0.01;
-
-  scene.add(mainLight);
-  scene.add(mainLight2);
-
-  // The "Fill" light (Softens the dark side of the flower)
-  const fillLight = new THREE.DirectionalLight(0xddeeff, 0.1);
-  fillLight.position.set(0, 5, -4);
-  scene.add(fillLight);
-
-  // ── Post-Processing Setup ────────────────────────────────────────────────
+  // ── Post-processing ───────────────────────────────────────────────────────
   const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
 
-  // 1. Basic Render Pass
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
-
-  // 2. Depth of Field Pass (The "Focus")
+  // Bokeh — created here, added last
   const bokehPass = new BokehPass(scene, camera, {
-    focus: 0.1, // Distance to focus on
-    aperture: 0.0, // Blur strength (keep this very low for "performant" look)
-    maxblur: isMobile() ? 0.012 : 0.01, // Maximum blur amount
-    width: window.innerWidth,
-    height: window.innerHeight,
+    focus:   0.1,
+    aperture: 0.0,
+    maxblur: IS_MOBILE() ? 0.012 : 0.01,
+    width:   window.innerWidth,
+    height:  window.innerHeight,
   });
 
-  // 3. Gamma Correction (Essential for AgX to look right)
   composer.addPass(new ShaderPass(GammaCorrectionShader));
 
-  const saturationPass = new ShaderPass(SaturationShader);
-  composer.addPass(saturationPass);
+  const satPass = new ShaderPass(SaturationShader);
+  composer.addPass(satPass);
 
-  // 4. FXAA (This fixes the jagged stamen)
   const fxaaPass = new ShaderPass(FXAAShader);
-  fxaaPass.uniforms['resolution'].value.set(
-    1 / (window.innerWidth * renderer.getPixelRatio()),
-    1 / (window.innerHeight * renderer.getPixelRatio())
+  fxaaPass.uniforms.resolution.value.set(
+    1 / (window.innerWidth  * renderer.getPixelRatio()),
+    1 / (window.innerHeight * renderer.getPixelRatio()),
   );
   composer.addPass(fxaaPass);
 
-  // Optimization: Disable DoF on mobile if it lags
-  // if (!isMobile()) {
-    composer.addPass(bokehPass);
-  // }
+  composer.addPass(bokehPass); // last
 
-  // ── Model state ───────────────────────────────────────────────────────────
-  let mixer = null;
-  let action = null;
+  // ── State ─────────────────────────────────────────────────────────────────
   let flower = null;
-
-  // ── Scroll ────────────────────────────────────────────────────────────────
-  // progress is set each frame inside animate() by reading window.lenis.scroll.
-  let progress = 0;
+  let mixer  = null;
+  let action = null;
 
   // ── Resize ────────────────────────────────────────────────────────────────
   window.addEventListener('resize', () => {
-    camera.fov = isMobile() ? 28 : 24;
-    camera.aspect = window.innerWidth / window.innerHeight;
+    const w = window.innerWidth, h = window.innerHeight;
+    camera.fov    = IS_MOBILE() ? 28 : 24;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    camera.position.setZ(isMobile() ? 12 : 11);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.position.setZ(IS_MOBILE() ? 12 : 11);
+    renderer.setSize(w, h);
+    fxaaPass.uniforms.resolution.value.set(
+      1 / (w * renderer.getPixelRatio()),
+      1 / (h * renderer.getPixelRatio()),
+    );
   });
+
+  // ── Clock (for wind) ─────────────────────────────────────────────────────
+  const clock = new THREE.Clock();
 
   // ── Render loop ───────────────────────────────────────────────────────────
   function animate() {
     requestAnimationFrame(animate);
 
-    // Read Lenis's smooth scroll position directly every frame.
-    // Lenis already eases the scroll over 1.2s — adding a lerp on top
-    // creates double-smoothing which causes the "lagging behind" feel.
-    // So we track targetProgress exactly; no additional lerp needed.
-    const currentScroll = window.lenis ? window.lenis.scroll : window.scrollY;
-    progress = Math.min(1, Math.max(0, currentScroll / HERO_SCROLL_RANGE()));
+    if (!flower || !action || !mixer) return;
 
-    if (flower && action && mixer) {
-      const mobile = isMobile();
-      const clamped = Math.min(1, Math.max(0, progress));
-      const eased = 1 - (1 - clamped) * (1 - clamped);
+    const scroll   = window.lenis ? window.lenis.scroll : window.scrollY;
+    const progress = Math.min(1, Math.max(0, scroll / SCROLL_RANGE()));
+    const mobile   = IS_MOBILE();
+    const ph       = mobile ? PHASE.mobile : PHASE.desktop;
 
-      // Split progress into two phases using the appropriate ratios
-      const params = mobile ? PHASE_PARAMS.mobile : PHASE_PARAMS.desktop;
-      // divide by duration so that lower numbers complete sooner
-      const phase1 = Math.min(1.0, progress / params.phase1);
-      const phase2 = Math.min(1.0, Math.max(0.0, (progress - 0.5) / params.phase2));
-      const eased1 = 1 - (1 - phase1) * (1 - phase1);
-      const eased2 =
-        phase2 < 0.5 ? 4 * phase2 * phase2 * phase2 : 1 - Math.pow(-2 * phase2 + 2, 2) / 2;
+    // phase values
+    const phase1 = Math.min(1, progress / ph.p1);
+    const phase2 = Math.min(1, Math.max(0, (progress - 0.5) / ph.p2));
 
-      // any mobile-specific adjustments to transform values can go here
-      const rotX = lerp(0, 0.1, Math.min(1.0, eased1 * 2));
-      const rotY = lerp(0, -0.2, eased2);
+    // eased versions
+    const eased   = easeOut2(Math.min(1, Math.max(0, progress)));
+    const eased1  = easeOut2(phase1);
+    const eased2  = easeCubic(phase2);
 
-      const camZ = mobile ? lerp(11, 3.8, eased2) : lerp(11, 4, eased2);
-      camera.position.setZ(camZ);
-      const camY = mobile ? lerp(3.8, 1.5, eased2) : lerp(3.8, 1.6, eased2);
-      camera.position.setY(camY);
-      const camX = mobile ? lerp(0.2, 0.2, eased2) : lerp(0.1, 0.2, eased2);
-      camera.position.setX(camX);
+    // camera
+    camera.position.set(
+      lerp(mobile ? 0.2 : 0.1, 0.2, eased2),
+      lerp(3.8, mobile ? 1.5 : 1.6, eased2),
+      lerp(11,  mobile ? 3.8 : 4.0, eased2),
+    );
 
-      // flower.position.set(posX, posY, 0);
-      flower.rotation.set(rotX, rotY, -0.3);
-      flower.scale.setScalar(2.1);
+    // flower transform
+    flower.rotation.set(
+      lerp(0, 0.1, Math.min(1, eased1 * 2)),
+      lerp(0, -0.2, eased2),
+      -0.3,
+    );
+    flower.scale.setScalar(2.1);
 
-      // Inside animate(), alongside the other lerped values:
-      const saturation = lerp(0.6, 1.0, eased * 2); // reaches 1.0 at progress = 0.5
-      saturationPass.uniforms['saturation'].value = Math.min(1.0, saturation);
-      const aperture = lerp(0.0, isMobile() ? 0.02 : 0.005, eased2);
-      bokehPass.uniforms['aperture'].value = aperture;
-      bokehPass.uniforms['focus'].value = lerp(11.2, 3.8, eased2); // Pull focus closer as we bloom
+    // post-process
+    satPass.uniforms.saturation.value   = Math.min(1, lerp(0.6, 1.0, eased * 2));
+    bokehPass.uniforms.aperture.value   = lerp(0, mobile ? 0.02 : 0.005, eased2);
+    bokehPass.uniforms.focus.value      = lerp(11.2, 3.8, eased2);
 
-      const duration = action.getClip().duration;
-      action.time = duration * Math.min(0.9999, phase1);
-      mixer.update(0);
-    }
+    // animation scrub
+    action.time = action.getClip().duration * Math.min(0.9999, phase1);
+    mixer.update(0);
 
-    // Only render once the flower is in the scene — saves GPU during GLB load.
-    if (flower) {
-      if (composer) {
-        composer.render();
-      } else {
-        renderer.render(scene, camera);
-      }
-    }
+    // tick wind time
+    windUniforms.uTime.value = clock.getElapsedTime();
+
+    composer.render();
   }
 
   animate();
 
-  // ── Load ──────────────────────────────────────────────────────────────────
-  console.log('[3D] calling load()...');
-  load()
-    .then((data) => {
-      console.log('[3D] load() resolved');
-      console.log('[3D] animations:', data.animations.length);
-      data.animations.forEach((clip, i) =>
-        console.log(`[3D]   clip[${i}]: "${clip.name}" duration=${clip.duration}s`)
-      );
+  // ── Load model ────────────────────────────────────────────────────────────
+  loadGLB().then(gltf => {
+    const root = gltf.scene;
 
-      // Log meshes and their material state
-      data.flower.traverse((child) => {
-        if (!child.isMesh) return;
+    root.traverse(child => {
+      if (!child.isMesh) return;
+      child.castShadow    = true;
+      child.receiveShadow = true;
 
-        child.castShadow = true;
-        child.receiveShadow = true;
+      const mat = child.material;
+      if (!mat) return;
 
-        if (child.material) {
-          child.material.dithering = true; // Helps with color banding
-        }
-        // Improves texture sharpness at angles
-        if (child.material.map) child.material.map.anisotropy = 16;
+      mat.dithering = true;
+      if (mat.map) mat.map.anisotropy = 16;
 
-        const mat = child.material;
-        console.log(
-          '[3D]   mesh:',
-          child.name,
-          '| mat:',
-          mat.type,
-          '| map:',
-          mat.map ? '✓' : 'undefined',
-          '| normalMap:',
-          mat.normalMap ? '✓' : 'undefined',
-          '| transparent:',
-          mat.transparent,
-          '| transmission:',
-          mat.transmission
-        );
+      // inject wind displacement
+      applyWind(mat);
 
-        // Fix alpha cutout for petal/flower materials
-        // The GLB materials are kept as-is; we only patch transparency rendering
-        const matName = mat.name?.toLowerCase() ?? '';
-        if (matName.includes('petal') || matName.includes('flower')) {
-          mat.alphaTest = 0.5;
-          mat.transparent = false;
-          mat.depthWrite = true;
-          mat.side = THREE.DoubleSide;
-
-          mat.needsUpdate = true;
-          console.log('[3D] alpha clip applied to:', child.name);
-        }
-      });
-
-      flower = data.flower;
-      scene.add(flower);
-      canvas.style.opacity = '1'; // fade in now that the flower is ready
-      console.log('[3D] flower added to scene');
-
-      if (data.animations?.length > 0) {
-        mixer = new THREE.AnimationMixer(flower);
-        action = mixer.clipAction(data.animations[0]);
-        action.clampWhenFinished = false;
-        action.play();
-        action.paused = true;
-        mixer.setTime(0);
-        console.log('[3D] animation ready, duration:', action.getClip().duration, 's');
-      } else {
-        console.warn('[3D] No animations found');
+      // Alpha cutout fix for petals
+      const name = mat.name?.toLowerCase() ?? '';
+      if (name.includes('petal') || name.includes('flower')) {
+        mat.alphaTest  = 0.5;
+        mat.transparent = false;
+        mat.depthWrite  = true;
+        mat.side        = THREE.DoubleSide;
+        mat.needsUpdate = true;
       }
-    })
-    .catch((err) => console.error('[3D] load() failed:', err));
+    });
+
+    flower = root;
+    scene.add(flower);
+    canvas.style.opacity = '1';
+
+    if (gltf.animations?.length) {
+      mixer  = new THREE.AnimationMixer(flower);
+      action = mixer.clipAction(gltf.animations[0]);
+      action.clampWhenFinished = false;
+      action.play();
+      action.paused = true;
+      mixer.setTime(0);
+    }
+  }).catch(err => console.error('[flower] load failed:', err));
 }
 
-async function load() {
-  const glbUrl = ASSET_BASE_URL + GLB_FILE;
-
-  console.log('[3D] fetching GLB:', glbUrl);
-  const response = await fetch(glbUrl);
-  console.log('[3D] GLB fetch status:', response.status, response.ok);
-
-  if (!response.ok) throw new Error(`Failed to fetch GLB: ${response.status}`);
-
-  const arrayBuffer = await response.arrayBuffer();
-  console.log('[3D] GLB arrayBuffer size:', arrayBuffer.byteLength, 'bytes');
-
-  const gltf = await new Promise((resolve, reject) => {
-    modelLoader.parse(arrayBuffer, '', resolve, reject);
-  });
-
-  console.log('[3D] GLB parsed, animations:', gltf.animations.length);
-  return { flower: gltf.scene, animations: gltf.animations };
-}
+init();
