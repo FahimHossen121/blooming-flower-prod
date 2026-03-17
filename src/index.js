@@ -12,8 +12,8 @@ import { GammaCorrectionShader } from 'three/addons/shaders/GammaCorrectionShade
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ASSET_BASE = 'https://cdn.prod.website-files.com/699633088760d3ad60ae151a/';
-const GLB_FILE   = '69a5de05093f9a76b01ada0a_Flower18.optimized.glb.txt';
+const ASSET_BASE = 'https://cdn.prod.website-files.com/68c45f560e661eb43d42aeb3/';
+const GLB_FILE   = '69b927ba63fd8b757e642917_Flower20.optimized.glb.txt';
 
 const SCROLL_RANGE  = () => window.innerHeight * 2;
 const IS_MOBILE     = () => window.innerWidth <= 640;
