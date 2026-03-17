@@ -252,5 +252,5 @@ The access token must be then placed in a [repository secret](https://docs.githu
 
 
 ```
-<script defer src="https://cdn.jsdelivr.net/gh/FahimHossen121/blooming-flower-prod@v1.1.1/dist/index.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/FahimHossen121/blooming-flower-prod@v1.1.2/dist/index.js"></script>
 ```
